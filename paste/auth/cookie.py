@@ -144,34 +144,27 @@ class AuthCookieSigner(object):
         if six.PY3:
             content = content.encode('utf8')
             timestamp = timestamp.encode('utf8')
-
-        if six.PY3:
-            cookie = base64.encodebytes(
-                hmac.new(self.secret, content, sha1).digest() +
-                timestamp +
-                content)
-        else:
-            cookie = base64.encodestring(
-                hmac.new(self.secret, content, sha1).digest() +
-                timestamp +
-                content)
+        cookie = base64.encodebytes(
+            hmac.new(self.secret.encode(), content, sha1).digest() +
+            timestamp +
+            content)
         cookie = cookie.replace(b"/", b"_").replace(b"=", b"~")
         cookie = cookie.replace(b'\n', b'').replace(b'\r', b'')
         if len(cookie) > self.maxlen:
             raise CookieTooLarge(content, cookie)
-        return cookie
+        return cookie.decode()
 
     def auth(self, cookie):
         """
         Authenticate the cooke using the signature, verify that it
         has not expired; and return the cookie's content
         """
-        decode = base64.decodestring(
-            cookie.replace("_", "/").replace("~", "="))
+        decode = base64.decodebytes(
+            cookie.replace("_", "/").replace("~", "=").encode())
         signature = decode[:_signature_size]
-        expires = decode[_signature_size:_header_size]
-        content = decode[_header_size:]
-        if signature == hmac.new(self.secret, content, sha1).digest():
+        expires = decode[_signature_size:_header_size].decode()
+        content = decode[_header_size:].decode()
+        if signature == hmac.new(self.secret.encode(), content.encode(), sha1).digest():
             if int(expires) > int(make_time(time.time())):
                 return content
             else:
@@ -275,7 +268,7 @@ class AuthCookieHandler(object):
         if self.cookie_name in jar:
             content = self.signer.auth(jar[self.cookie_name].value)
             if content:
-                for pair in content.split(";"):
+                for pair in str(content).split(";"):
                     (k, v) = pair.split("=")
                     k = decode(k)
                     if k not in scanlist:
@@ -312,9 +305,9 @@ class AuthCookieHandler(object):
             if content:
                 content = ";".join(content)
                 content = self.signer.sign(content)
-                if six.PY3:
-                    content = content.decode('utf8')
-                cookie = '%s=%s; Path=/;' % (self.cookie_name, content)
+                #if six.PY3:
+                #    content = content.decode('utf8')
+                cookie = '{0}={1}; Path=/;'.format(self.cookie_name, content)
                 if 'https' == environ['wsgi.url_scheme']:
                     cookie += ' secure;'
                 response_headers.append(('Set-Cookie', cookie))
